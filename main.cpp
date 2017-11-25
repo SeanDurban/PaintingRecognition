@@ -63,9 +63,14 @@ int main(int argc, const char** argv)
 	int choice;
 	int i = 0;
 	while (i < NO_GALLERYS){
-		Mat k = kmeans_clustering(gallerys[i], 2, 3);
+		Mat k = kmeans_clustering(gallerys[i], 3, 1);
+		Mat greyscale,bin;
+		cvtColor(k, greyscale, CV_BGR2GRAY);
+		threshold(greyscale, bin, 120, 255, THRESH_BINARY | THRESH_OTSU);
 		imshow("Image "+i,gallerys[i]);
+		imshow("gret " + i, greyscale);
 		imshow("kmeans(2,2) " + i, k);
+		imshow("bin " + i, bin);
 		i++;
 		choice = cvWaitKey();
 		cvDestroyAllWindows();
