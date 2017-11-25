@@ -1,27 +1,29 @@
 #include "Utilities.h"
 #include <iostream>
 #include <fstream>
+#define NO_GALLERYS 4
+#define NO_PAINTINGS 6
+
 using namespace std;
 vector<vector<vector<Point>>> groundTruths;
 vector<double> dice;
 Mat gtImage;
-const int MIN_CHILD_CONTOURS = 20;
-const int MAX_CONTOUR_AREA = (250 * 250);
-const int MIN_CONTOUR_AREA = 50;
-const int MIN_SIGN_AREA = 250;
+
 int main(int argc, const char** argv)
 {
-	char* file_location = "Notices/";
+	char* file_location = "Paintings/";
 	char* image_files[] = {
 
-		"Notice1.jpg", //0
-		"Notice2.jpg",//1
-		"Notice3.jpg", //2
-		"Notice4.jpg",	//3	
-		"Notice5.jpg", //4
-		"Notice6.jpg",//5
-		"Notice7.jpg",//6
-		"Notice8.jpg"//7
+		"Gallery1.jpg", //0
+		"Gallery2.jpg",//1
+		"Gallery3.jpg", //2
+		"Gallery4.jpg",	//3	
+		"Painting1.jpg", //4
+		"Painting2.jpg",//5
+		"Painting3.jpg",//6
+		"Painting4.jpg",//7
+		"Painting5.jpg",//8
+		"Painting6.jpg"//9
 	};
 
 	// Load images
@@ -48,21 +50,26 @@ int main(int argc, const char** argv)
 	groundTruths.push_back({ { Point(64, 64) , Point(476, 268) },{ Point(529, 126) , Point(611, 188) },{ Point(545, 192) , Point(603, 211) },{ Point(210, 305) , Point(595, 384) } });
 	groundTruths.push_back({ { Point(158, 90) , Point(768, 161) },{ Point(114, 174) , Point(800, 279) } });
 	
+	Mat* gallerys = new Mat[NO_GALLERYS];
+	Mat* templates = new Mat[NO_PAINTINGS];
+	for (int i = 0; i < number_of_images; i++) {
+		if (i < 4) {
+			gallerys[i] = image[i];
+		}
+		else {
+			templates[i - 4] = image[i];
+		}
+	}
 	int choice;
 	int i = 0;
-	do
-	{
+	while (i < NO_GALLERYS){
+		Mat k = kmeans_clustering(gallerys[i], 2, 3);
+		imshow("Image "+i,gallerys[i]);
+		imshow("kmeans(2,2) " + i, k);
+		i++;
 		choice = cvWaitKey();
 		cvDestroyAllWindows();
-		gtImage = image[i].clone();
-		//Get rectangles encasing text in image[i]
-		vector<Rect> resultRects = getTextRects(image[i]);
-		//Calculate DICE coefficient
-		calcDICE(groundTruths.at(i), resultRects);
-		cout << "Dice for " << i+1 << " : " << dice.at(i) << "\n";
-		i++;
-
-	} while (i < number_of_images);
+	} 
 }
 Mat kmeans_clustering(Mat& image, int k, int iterations)
 {
@@ -89,142 +96,6 @@ Mat kmeans_clustering(Mat& image, int k, int iterations)
 			for (int channel = 0; channel < image.channels(); channel++)
 				result_image.at<Vec3b>(row, col)[channel] = (uchar)centres.at<float>(*(labels.ptr<int>(row*image.cols + col)), channel);
 	return result_image;
-}
-void calcDICE(vector<vector<Point>> gt, vector<Rect> results) {
-	vector<Rect> gtRects;
-	double areaGT = 0.0;
-	for (int i = 0; i < gt.size(); i++) {
-		vector<Point> pts = gt.at(i);
-		int x = pts.at(0).x;
-		int y = pts.at(0).y;
-		int w = pts.at(1).x - x;
-		int h = pts.at(1).y - y;
-		Rect r = Rect(x, y, w, h);
-		areaGT = areaGT + r.area();
-		gtRects.push_back(r);
-	}
-	//This shows the ground truth image
-	applyBoundingRect(gtImage, gtRects, (0, 255, 0));
-	imshow("GT",gtImage);
-
-	double areaOverlap = 0.0;
-	double areaRes = 0.0;
-	for (int i = 0; i < results.size(); i++) {
-		double maxOverlap = 0.0;
-		Rect r1 = results.at(i);
-		areaRes = areaRes + r1.area();
-		for (int j = 0; j < gtRects.size(); j++) {
-			Rect r2 = gtRects.at(j);
-			double overlap = (r1 & r2).area();
-			maxOverlap = max(maxOverlap, overlap);
-		}
-		areaOverlap = areaOverlap + maxOverlap;
-	}
-	double diceRes = (2 * areaOverlap) / (areaGT + areaRes);
-	dice.push_back(diceRes);
-}
-vector<Rect> getTextRects(Mat& image) {
-	//Meanshift and convert to greyscale
-	Mat greyscaleImage, meanshiftImage;
-	pyrMeanShiftFiltering(image, meanshiftImage, 45, 20, 2);
-	cvtColor(meanshiftImage, greyscaleImage, CV_BGR2GRAY);
-	Mat greyscaleCopy = greyscaleImage.clone();
-
-	//Edge detection
-	Mat edgesResult;
-	Canny(greyscaleImage, edgesResult, 80, 180, 3);
-	edgesResult.convertTo(edgesResult, CV_8U);
-	Mat edgesResultCopy = edgesResult.clone();
-
-	//Closing (dilate and erode) on ED result
-	Mat closeRes = edgesResult.clone();
-	morphologyEx(closeRes, closeRes, MORPH_CLOSE, Mat(), Point(-1, -1), 2);
-
-	//Connected components on the closing result
-	vector<vector<Point>> contoursFound;
-	vector<Vec4i> hierarchy;
-	findContours(closeRes, contoursFound, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
-
-	//Classify edges to get sign
-	vector<Point> signContour;
-	signContour = contoursFound[0];
-	int curMaxArea = 0;
-	for (int contourNum = 0; (contourNum < (int)contoursFound.size()); contourNum++)
-	{
-		vector<Point> curContour = contoursFound[contourNum];
-		//Check is suitable size
-		if (contourArea(contoursFound[contourNum]) > MIN_SIGN_AREA) {
-			//Check if is parent
-			int child = hierarchy[contourNum].val[2];
-			if (child != -1) {
-				int count = 1;
-				while (hierarchy[child].val[0] != -1) {
-					//Check if valid contour
-					int a = contourArea(contoursFound[child]);
-					if (a > MIN_CONTOUR_AREA && a< MAX_CONTOUR_AREA) {
-						int child2 = hierarchy[child].val[2];
-						if (child2 != -1) {
-							count++;
-							while (hierarchy[child2].val[0] != -1) {
-								count++;
-								child2 = hierarchy[child2].val[0];
-							}
-						}
-						count++;
-					}
-					//Go to next contour
-					child = hierarchy[child].val[0];
-				}
-				if (count >= MIN_CHILD_CONTOURS) {
-					if (contourArea(contoursFound[contourNum]) > curMaxArea) {
-						signContour = contoursFound[contourNum];
-						curMaxArea = contourArea(contoursFound[contourNum]);
-					}
-				}
-			}
-		}
-	}
-
-	//Get rectangle around sign contour and crop to image to sign size
-	Rect signRect = boundingRect(signContour);
-	Mat cropped = image(signRect);
-	//Apply k means clustering with k =5
-	Mat clustered_image;
-	clustered_image = kmeans_clustering(cropped, 2, 5);
-	//Convert k means result to greyscale and apply threshold
-	cvtColor(clustered_image, clustered_image, CV_BGR2GRAY);
-	threshold(clustered_image, clustered_image, 150, 255, THRESH_BINARY_INV);
-	Mat clusteredCopy = clustered_image.clone();
-
-	vector<vector<Point>> contoursFound2;
-	//Connected components on the ED
-	findContours(clusteredCopy, contoursFound2, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
-	vector<Rect> rectangles;
-	for (int contour_number = 0; (contour_number<(int)contoursFound2.size()); contour_number++)
-	{
-		Rect boundRect = boundingRect(Mat(contoursFound2[contour_number]));
-		//If valid rect
-		if (boundRect.width <150 && boundRect.height < 150 && boundRect.height> 5 && boundRect.width>5) {
-			rectangles.push_back(boundRect);
-		}
-	}
-
-	bool changes = true;
-	vector<Rect> newRects;
-	vector<Rect> rectsToMerge = rectangles;
-	//Merge the rectangles until no more changes (rects merged) on last iteration
-	while (changes) {
-		newRects.clear();
-		changes = mergeRects(rectsToMerge, newRects);
-		rectsToMerge = newRects;
-	}
-
-	//Apply rects to cropped imageS
-	applyBoundingRect(cropped, newRects, (0, 0, 0xFF));
-
-	//Outputs
-	imshow("image", image);
-	return newRects;
 }
 
 bool mergeRects(vector<Rect> rectangles, vector<Rect> &newRects) {
@@ -255,7 +126,6 @@ bool mergeRects(vector<Rect> rectangles, vector<Rect> &newRects) {
 	}
 	return changes;
 }
-
 void applyBoundingRect(Mat& image, vector<Rect> rectangles, Scalar colour) {
 	//Iterate through all rectangles applying to image
 	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
@@ -270,7 +140,6 @@ bool overlappingRects(Rect boundRect, Rect boundRect2) {
 	r1.height += 8;
 	return ((r1 & boundRect2).area() > 0);
 }
-
 Rect getNewRect(Rect boundRect, Rect boundRect2) {
 	int newX = min(boundRect.x, boundRect2.x);
 	int newY = min(boundRect.y, boundRect2.y);
