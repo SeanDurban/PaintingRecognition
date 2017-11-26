@@ -64,13 +64,27 @@ int main(int argc, const char** argv)
 	int i = 0;
 	while (i < NO_GALLERYS){
 		Mat k = kmeans_clustering(gallerys[i], 3, 1);
-		Mat greyscale,bin;
-		cvtColor(k, greyscale, CV_BGR2GRAY);
+		Mat greyscale,bin, hsv;
+		cvtColor(gallerys[i], hsv, CV_BGR2HSV);
+		cvtColor(hsv, greyscale, CV_BGR2GRAY);
 		threshold(greyscale, bin, 120, 255, THRESH_BINARY | THRESH_OTSU);
+
+		vector<vector<Point>> contours;
+		vector<Vec4i> hierarchy;
+		findContours(bin, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
+		Mat contours_image = Mat::zeros(bin.size(), CV_8UC3);
+		for (int contour_number = 0; (contour_number<(int)contours.size()); contour_number++)
+		{
+			Scalar colour(rand() & 0xFF, rand() & 0xFF, rand() & 0xFF);
+			drawContours(contours_image, contours, contour_number, colour, 0, 8, hierarchy);
+		}
+
+		imshow("contours " + i, contours_image);
 		imshow("Image "+i,gallerys[i]);
 		imshow("gret " + i, greyscale);
 		imshow("kmeans(2,2) " + i, k);
 		imshow("bin " + i, bin);
+		imshow("hsv " + i, hsv);
 		i++;
 		choice = cvWaitKey();
 		cvDestroyAllWindows();
