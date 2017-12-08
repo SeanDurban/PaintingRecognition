@@ -36,59 +36,6 @@ Mat kmeans_clustering(Mat& image, int k, int iterations)
 	return result_image;
 }
 
-bool mergeRects(vector<Rect> rectangles, vector<Rect> &newRects) {
-	//vector <Rect> newRects;
-	vector <bool> used(rectangles.size());
-	bool changes = false;
-	std::fill(used.begin(), used.end(), false);
-	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
-		Rect curRect = rectangles[rectNo];
-		if (!used.at(rectNo)) {
-			for (int rectNo2 = 0; rectNo2 < (int)rectangles.size(); rectNo2++) {
-				if (rectNo != rectNo2) {
-					Rect rect2 = rectangles[rectNo2];
-					if (overlappingRects(curRect, rect2)) {
-						//Update to larger rect
-						curRect = getNewRect(curRect, rect2);
-						used[rectNo2] = true;
-						changes = true;
-					}
-				}
-			}
-			rectangles[rectNo] = curRect;
-			//If valid rect add to vec
-			if (curRect.width > 10 && curRect.height > 10) {
-				newRects.push_back(curRect);
-			}
-		}
-	}
-	return changes;
-}
-void applyBoundingRect(Mat& image, vector<Rect> rectangles, Scalar colour) {
-	//Iterate through all rectangles applying to image
-	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
-		Rect boundRect = rectangles[rectNo];
-		rectangle(image, boundRect.tl(), boundRect.br(), colour, 2, 8, 0);
-	}
-}
-bool overlappingRects(Rect boundRect, Rect boundRect2) {
-	Rect r1 = boundRect;
-	//Add to r1 width and height to allow it to overlap with close by rects
-	r1.width += 0;
-	r1.height += 0;
-	return ((r1 & boundRect2).area() > 0);
-}
-Rect getNewRect(Rect boundRect, Rect boundRect2) {
-	int newX = min(boundRect.x, boundRect2.x);
-	int newY = min(boundRect.y, boundRect2.y);
-	int r1x2 = boundRect.x + boundRect.width;
-	int r1y2 = boundRect.y + boundRect.height;
-	int r2x2 = boundRect2.x + boundRect2.width;
-	int r2y2 = boundRect2.y + boundRect2.height;
-	int newWidth = max(r1x2, r2x2) - newX;
-	int newHeight = max(r1y2, r2y2) - newY;
-	return Rect(newX, newY, newWidth, newHeight);
-}
 void hist(Mat& src)
 {
 	Mat hsv;
@@ -212,7 +159,6 @@ static void Draw1DHistogram(MatND histograms[], int number_of_histograms, Mat& d
 		}
 	}
 }
-
 static void houghLinesApproach(Mat& image)
 {
 	Mat hsv, greyscale, bin, canny;
@@ -251,6 +197,7 @@ static void houghLinesApproach(Mat& image)
 	imshow("Houghlines", linesRes);
 	imshow("Canny", canny);
 }
+
 static vector<Rect> floodFillPostprocess(Mat& img, const Scalar& colorDiff = Scalar::all(1))
 {
 	vector<Rect> rects;
@@ -266,7 +213,7 @@ static vector<Rect> floodFillPostprocess(Mat& img, const Scalar& colorDiff = Sca
 				Scalar newVal(rng(256), rng(256), rng(256));
 				Rect r;
 				floodFill(img, mask, Point(x, y), newVal, &r, colorDiff, colorDiff);
-				if (r.width > 40 && r.height > 40&& r.width < 800 && r.height <800) {
+				if (r.width > 20 && r.height > 20 && r.width < 800 && r.height <800) {
 					rects.push_back(r);
 				}
 			}
@@ -274,90 +221,123 @@ static vector<Rect> floodFillPostprocess(Mat& img, const Scalar& colorDiff = Sca
 	}
 	return rects;
 }
-static vector<Rect> filterRects(vector<Rect> rectangles, int xmax, int ymax)
+
+bool mergeRects(vector<Rect> rectangles, vector<Rect> &newRects) {
+	//vector <Rect> newRects;
+	vector <bool> used(rectangles.size());
+	bool changes = false;
+	std::fill(used.begin(), used.end(), false);
+	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
+		Rect curRect = rectangles[rectNo];
+		if (!used.at(rectNo)) {
+			for (int rectNo2 = 0; rectNo2 < (int)rectangles.size(); rectNo2++) {
+				if (rectNo != rectNo2) {
+					Rect rect2 = rectangles[rectNo2];
+					if (overlappingRects(curRect, rect2)) {
+						//Update to larger rect
+						curRect = getNewRect(curRect, rect2);
+						used[rectNo2] = true;
+						changes = true;
+					}
+				}
+			}
+			rectangles[rectNo] = curRect;
+			//If valid rect add to vec
+			if (curRect.width > 10 && curRect.height > 10) {
+				newRects.push_back(curRect);
+			}
+		}
+	}
+	return changes;
+}
+void applyBoundingRect(Mat& image, vector<Rect> rectangles, Scalar colour) {
+	//Iterate through all rectangles applying to image
+	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
+		Rect boundRect = rectangles[rectNo];
+		rectangle(image, boundRect.tl(), boundRect.br(), colour, 2, 8, 0);
+	}
+}
+bool overlappingRects(Rect boundRect, Rect boundRect2) {
+	Rect r1 = boundRect;
+	//Add to r1 width and height to allow it to overlap with close by rects
+	r1.width += 0;
+	r1.height += 0;
+	return ((r1 & boundRect2).area() > 0);
+}
+Rect getNewRect(Rect boundRect, Rect boundRect2) {
+	int newX = min(boundRect.x, boundRect2.x);
+	int newY = min(boundRect.y, boundRect2.y);
+	int r1x2 = boundRect.x + boundRect.width;
+	int r1y2 = boundRect.y + boundRect.height;
+	int r2x2 = boundRect2.x + boundRect2.width;
+	int r2y2 = boundRect2.y + boundRect2.height;
+	int newWidth = max(r1x2, r2x2) - newX;
+	int newHeight = max(r1y2, r2y2) - newY;
+	return Rect(newX, newY, newWidth, newHeight);
+}
+static vector<Rect> filterBoundaryRects(vector<Rect> rectangles, int xmax, int ymax)
 {
 	vector<Rect> newRects;
 	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
 		Rect boundRect = rectangles[rectNo];
-		if (boundRect.x != 0 && boundRect.y != 0 && (boundRect.y + boundRect.height < ymax) && (boundRect.x + boundRect.width < xmax)) {
-			newRects.push_back(boundRect);
-		}
+		int x = boundRect.x;
+		int y = boundRect.y;
+			if (x != 0 && y != 0 && (y + boundRect.height < ymax) && (x + boundRect.width < xmax)) {
+				newRects.push_back(boundRect);
+			}
 	}
-
 	return newRects;
 }
+static vector<Rect> filterRects(vector<Rect> rectangles)
+{
+	vector<Rect> newRects;
+	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
+		Rect boundRect = rectangles[rectNo];
+		if (boundRect.width > 80 && boundRect.height > 80) {
+				newRects.push_back(boundRect);
+		}
+	}
+	return newRects;
+}
+static void getCroppedImages(Mat& image, vector<Rect> rects)
+{
+	for (int rectNo = 0; rectNo < (int)rects.size(); rectNo++) {
+		Rect boundRect = rects[rectNo];
+		Mat cropIm = image(boundRect);
+		imshow("cropped " + rectNo, cropIm);
+		cvWaitKey();
+		cvDestroyAllWindows();
+	}
+}
+
 static void meanshiftApproach(Mat& image)
 {
 	//cols*rows// image 2 = 1296*968
 	Mat greyscaleImage, meanshiftImage, meanshiftImage2;
 	// (so-spatial rad, sr-colour window)
-	pyrMeanShiftFiltering(image, meanshiftImage, 20, 62, 2);
+	pyrMeanShiftFiltering(image, meanshiftImage, 20, 56, 2);
 	//	cvtColor(meanshiftImage, greyscaleImage, CV_BGR2GRAY);
 	//Mat test = greyscaleImage.clone();
 	Mat meanshiftFlood = meanshiftImage.clone();
 	//floodFillPostprocess(test, Scalar::all(2));
 	vector<Rect> rects;
 	rects = floodFillPostprocess(meanshiftFlood, Scalar::all(2));
-	vector<Rect> newRects, mergedRects;
+	vector<Rect> newRects, mergedRects, filteredRects;
 
 	//Filter out floor/ceiling segments
-	newRects = filterRects(rects, image.cols, image.rows);
-
+	newRects = filterBoundaryRects(rects, image.cols, image.rows);
+	//newRects = rects;
 	mergeRects(newRects, mergedRects);
-	applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
-
+	filteredRects = filterRects(mergedRects);
+	applyBoundingRect(image, filteredRects, (0, 0, 0xFF));
+	getCroppedImages(image, filteredRects);
 	imshow("meanshift22AfterFlood", meanshiftFlood);
 	imshow("meanshift22", meanshiftImage);
 	namedWindow("rects", WINDOW_NORMAL);
 	imshow("rects", image);
 	//imshow("bin", bin);
 }
-static void histApproach(Mat& image)
-{
-	hist(image);
-	ComputeHistogram(image);
-}
 
-//From: https://docs.opencv.org/2.4/doc/tutorials/imgproc/histograms/back_projection/back_projection.html
-/*static void Hist_and_Backproj(Mat& src,int, void*)
-{
-	Mat hsv, hue;
-	cvtColor(src, hsv, CV_BGR2HSV);
-	/// Use only the Hue value
-	hue.create(hsv.size(), hsv.depth());
-	int ch[] = { 0, 0 };
-	mixChannels(&hsv, 1, &hue, 1, ch, 1);
-	MatND hist;
-	int bins = 25;
-	Mat hue;
-	int histSize = 25;
-	float hue_range[] = { 0, 180 };
-	const float* ranges = { hue_range };
-
-	/// Get the Histogram and normalize it
-	calcHist(&hue, 1, 0, Mat(), hist, 1, &histSize, &ranges, true, false);
-	normalize(hist, hist, 0, 255, NORM_MINMAX, -1, Mat());
-
-	/// Get Backprojection
-	MatND backproj;
-	calcBackProject(&hue, 1, 0, hist, backproj, &ranges, 1, true);
-
-	/// Draw the backproj
-	imshow("BackProj", backproj);
-
-	/// Draw the histogram
-	int w = 400; int h = 400;
-	int bin_w = cvRound((double)w / histSize);
-	Mat histImg = Mat::zeros(w, h, CV_8UC3);
-
-	for (int i = 0; i < bins; i++)
-	{
-		rectangle(histImg, Point(i*bin_w, h), Point((i + 1)*bin_w, h - cvRound(hist.at<float>(i)*h / 255.0)), Scalar(0, 0, 255), -1);
-	}
-
-	imshow("Histogram", histImg);
-}
-*/
 int main(int argc, const char** argv)
 {
 	char* file_location = "Paintings/";
@@ -389,16 +369,6 @@ int main(int argc, const char** argv)
 			return -1;
 		}
 	}
-	//Ground truth for images
-	groundTruths.push_back({ { Point(34, 17) , Point(286, 107) },{ Point(32, 117) ,Point(297, 223) },{ Point(76, 234) , Point(105, 252) } });
-	groundTruths.push_back({ { Point(47, 191) ,Point(224, 253) } });
-	groundTruths.push_back({ { Point(142, 121) , Point(566, 392) } });
-	groundTruths.push_back({ { Point(157,72) , Point(378, 134) },{ Point(392, 89) , Point(448, 132) },{ Point(405, 138) , Point(442, 152) },{ Point(80, 157) ,Point(410, 245) },{ Point(82, 258) , Point(372, 322) } });
-	groundTruths.push_back({ { Point(112, 73) , Point(598, 170) },{ Point(108, 178) ,Point(549, 256) },{ Point(107, 264) ,Point(522, 352) } });
-	groundTruths.push_back({ { Point(91, 54) , Point(446, 227) } });
-	groundTruths.push_back({ { Point(64, 64) , Point(476, 268) },{ Point(529, 126) , Point(611, 188) },{ Point(545, 192) , Point(603, 211) },{ Point(210, 305) , Point(595, 384) } });
-	groundTruths.push_back({ { Point(158, 90) , Point(768, 161) },{ Point(114, 174) , Point(800, 279) } });
-
 	Mat* gallerys = new Mat[NO_GALLERYS];
 	Mat* templates = new Mat[NO_PAINTINGS];
 	for (int i = 0; i < number_of_images; i++) {
@@ -410,7 +380,7 @@ int main(int argc, const char** argv)
 		}
 	}
 	int choice;
-	int i = 1;
+	int i = 0;
 	while (i < NO_GALLERYS) {
 		Mat currentImage = gallerys[i];
 		Mat imCopy = currentImage.clone();
@@ -424,57 +394,49 @@ int main(int argc, const char** argv)
 		cvDestroyAllWindows();
 	}
 }
-//	Mat k = kmeans_clustering(meanshiftImage, 3, 1);
-//Mat greyscale, bin, bin2, hsv, canny, greyscaleMS;
-//Mat hsv2;
-//	cvtColor(currentImage, hsv2, CV_BGR2HSV);
-//	hist(meanshiftImage);
-//ComputeHistogram(hsv2);
-//		cvtColor(currentImage, greyscaleImage, CV_BGR2GRAY);
-
-//		cvtColor(hsv, greyscale, CV_BGR2GRAY);
-//	threshold(greyscale, bin, 120, 255, THRESH_BINARY_INV | THRESH_OTSU);
-//threshold(greyscaleImage, bin2, 120, 255, THRESH_BINARY | THRESH_OTSU);
-//	Canny(greyscale, canny, 50, 200, 3);
-
-//imshow("ms ", meanshiftImage);
-/*Houghlines
-vector<Vec2f> lines;
-HoughLines(canny, lines, 1, CV_PI / 180, 100, 0, 0);
-
-for (size_t i = 0; i < lines.size(); i++)
+static void histApproach(Mat& image)
 {
-float rho = lines[i][0], theta = lines[i][1];
-Point pt1, pt2;
-double a = cos(theta), b = sin(theta);
-double x0 = a*rho, y0 = b*rho;
-pt1.x = cvRound(x0 + 1000 * (-b));
-pt1.y = cvRound(y0 + 1000 * (a));
-pt2.x = cvRound(x0 - 1000 * (-b));
-pt2.y = cvRound(y0 - 1000 * (a));
-line(currentImage, pt1, pt2, Scalar(0, 0, 0), 3, CV_AA);
+	hist(image);
+	ComputeHistogram(image);
 }
 
-//houghlinesp
-vector<Vec4i> lines2;
-Mat test = Mat::zeros(imCopy.size(), imCopy.type());
-HoughLinesP(canny, lines2, 1, CV_PI / 90, 90, 70, 15);
-for (size_t i = 0; i < lines2.size(); i++)
+//From: https://docs.opencv.org/2.4/doc/tutorials/imgproc/histograms/back_projection/back_projection.html
+/*static void Hist_and_Backproj(Mat& src,int, void*)
 {
-Vec4i l = lines2[i];
-rectangle(test, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255, 0, 0),1,8,0 );
-//line(test, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255, 0, 0), 5, CV_AA);
+Mat hsv, hue;
+cvtColor(src, hsv, CV_BGR2HSV);
+/// Use only the Hue value
+hue.create(hsv.size(), hsv.depth());
+int ch[] = { 0, 0 };
+mixChannels(&hsv, 1, &hue, 1, ch, 1);
+MatND hist;
+int bins = 25;
+Mat hue;
+int histSize = 25;
+float hue_range[] = { 0, 180 };
+const float* ranges = { hue_range };
+
+/// Get the Histogram and normalize it
+calcHist(&hue, 1, 0, Mat(), hist, 1, &histSize, &ranges, true, false);
+normalize(hist, hist, 0, 255, NORM_MINMAX, -1, Mat());
+
+/// Get Backprojection
+MatND backproj;
+calcBackProject(&hue, 1, 0, hist, backproj, &ranges, 1, true);
+
+/// Draw the backproj
+imshow("BackProj", backproj);
+
+/// Draw the histogram
+int w = 400; int h = 400;
+int bin_w = cvRound((double)w / histSize);
+Mat histImg = Mat::zeros(w, h, CV_8UC3);
+
+for (int i = 0; i < bins; i++)
+{
+rectangle(histImg, Point(i*bin_w, h), Point((i + 1)*bin_w, h - cvRound(hist.at<float>(i)*h / 255.0)), Scalar(0, 0, 255), -1);
 }
 
-
-/*
-vector<vector<Point>> contours;
-vector<Vec4i> hierarchy;
-findContours(bin, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
-Mat contours_image = Mat::zeros(bin.size(), CV_8UC3);
-for (int contour_number = 0; (contour_number<(int)contours.size()); contour_number++)
-{
-Scalar colour(rand() & 0xFF, rand() & 0xFF, rand() & 0xFF);
-drawContours(contours_image, contours, contour_number, colour, 0, 8, hierarchy);
+imshow("Histogram", histImg);
 }
 */
