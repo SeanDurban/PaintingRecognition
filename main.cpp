@@ -361,17 +361,16 @@ static Mat meanshiftApproach2(Mat& image)
 	mergeRects(newRects, mergedRects);
 	//applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
 
-	//imshow("meanshift22AfterFlood", meanshiftFlood);
-	//imshow("meanshift22", meanshiftImage);
+	imshow("meanshift22AfterFlood", meanshiftFlood);
+	imshow("meanshift22", meanshiftImage);
 
 	if (mergedRects.size() == 1) {
 		Rect r = mergedRects.back();
-		if (r.area() > (image.cols*image.rows*0.7)) { //Only return if rect covers at least 70 % of original image
+		if (r.area() > (image.cols*image.rows*0.30)) { //Only return if rect covers at least 50 % of original image
 			return image(r);
 		}
 	}
 	return image;
-	//imshow("bin", bin);
 }
 static void applyCanny(Mat& image) {
 	Mat greyscaleImage;
@@ -417,15 +416,13 @@ static double compareImages(Mat& image1, Mat& image2)
 
 	double corr1 = compareHist(im1Hist, im2Hist, CV_COMP_CORREL);
 	
-/*	Mat display_image = Mat::zeros(image1.size(), CV_8UC3);
-	Draw1DHistogram(&im1Hist, 1, display_image);
-	imshow("Im1 histogram", display_image);
-
-
 	Mat display_image2 = Mat::zeros(image2.size(), CV_8UC3);
 	Draw1DHistogram(&im2Hist, 1, display_image2);
 	imshow("im2 histogram", display_image2);
-*/
+
+	Mat display_image = Mat::zeros(image1.size(), CV_8UC3);
+	Draw1DHistogram(&im1Hist, 1, display_image);
+	imshow("Im1 histogram", display_image);
 	return corr1;
 }
 int main(int argc, const char** argv)
@@ -492,13 +489,16 @@ int main(int argc, const char** argv)
 		}
 	}
 
-	cout << "CroppedNo , " << "Template No  " << " | " << "CorrRes";
-	for (int croppedNo = 0; croppedNo < noCropped; croppedNo++) {
+	cout << "CroppedNo " << "Template No  " << " | " << "CorrRes\n";
+	for (int croppedNo = 7; croppedNo < noCropped; croppedNo++) {
 		Mat im = cropped[croppedNo];
 
 		//Meanshift to try remove frame if poss
 		Mat croppedIm = meanshiftApproach2(im);
-
+		imshow("croppedIm", croppedIm);
+		imshow("Im", im);
+		waitKey();
+		destroyAllWindows();
 		for (int templateNo = 0; templateNo < NO_PAINTINGS; templateNo++)
 		{
 			Mat template1;
@@ -509,10 +509,13 @@ int main(int argc, const char** argv)
 			double corr = compareImages(croppedIm, template1);
 
 			//print result
-			cout << croppedNo << " , " << templateNo << " | " << corr << "\n";
+			cout << croppedNo << " , " << templateNo+1 << " | " << corr << "\n";
+			waitKey();
+			destroyAllWindows();
 		}
-
+		cout << "\n\n";
 	}
+	waitKey();
 	
 	//The following goes from original input gallery to individual regions in galleries
 	//These are cropped and saved for testing purposes
