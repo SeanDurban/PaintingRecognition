@@ -85,11 +85,12 @@ void hist(Mat& src)
 
 	namedWindow("H-S Histogram", 1);
 	imshow("H-S Histogram", histImg);
+	waitKey();
 }
 
 
 
-void ComputeHistogram(Mat& image)
+static MatND ComputeHistogram(Mat& image)
 {
 
 	Mat mImage = image.clone();
@@ -123,6 +124,8 @@ void ComputeHistogram(Mat& image)
 	Mat display_image = Mat::zeros(mImage.size(), CV_8UC3);
 	Draw1DHistogram(&mHistogram, 1, display_image);
 	imshow("histogram", display_image);
+	return mHistogram;
+//	waitKey();
 }
 
 static void Draw1DHistogram(MatND histograms[], int number_of_histograms, Mat& display_image)
@@ -198,7 +201,7 @@ static void houghLinesApproach(Mat& image)
 	imshow("Canny", canny);
 }
 
-static vector<Rect> floodFillPostprocess(Mat& img, const Scalar& colorDiff = Scalar::all(1))
+static vector<Rect> floodFillPostprocess(Mat& img, int rows, int cols, const Scalar& colorDiff = Scalar::all(1))
 {
 	vector<Rect> rects;
 	CV_Assert(!img.empty());
@@ -213,7 +216,7 @@ static vector<Rect> floodFillPostprocess(Mat& img, const Scalar& colorDiff = Sca
 				Scalar newVal(rng(256), rng(256), rng(256));
 				Rect r;
 				floodFill(img, mask, Point(x, y), newVal, &r, colorDiff, colorDiff);
-				if (r.width > 20 && r.height > 20 && r.width < 800 && r.height <800) {
+				if (r.width > 20 && r.height > 20 && r.width < cols && r.height <rows) {
 					rects.push_back(r);
 				}
 			}
@@ -254,7 +257,7 @@ void applyBoundingRect(Mat& image, vector<Rect> rectangles, Scalar colour) {
 	//Iterate through all rectangles applying to image
 	for (int rectNo = 0; rectNo < (int)rectangles.size(); rectNo++) {
 		Rect boundRect = rectangles[rectNo];
-		rectangle(image, boundRect.tl(), boundRect.br(), colour, 2, 8, 0);
+		rectangle(image, boundRect.tl(), boundRect.br(), colour, 1, 8, 0);
 	}
 }
 bool overlappingRects(Rect boundRect, Rect boundRect2) {
@@ -299,18 +302,23 @@ static vector<Rect> filterRects(vector<Rect> rectangles)
 	}
 	return newRects;
 }
-static void getCroppedImages(Mat& image, vector<Rect> rects)
+static void getCroppedImages(Mat& image, vector<Rect> rects, int imageNo)
 {
 	for (int rectNo = 0; rectNo < (int)rects.size(); rectNo++) {
 		Rect boundRect = rects[rectNo];
 		Mat cropIm = image(boundRect);
+
+		//Write cropped image to file 
+		String fileLocation = "Paintings/" + to_string(imageNo) +"-"+ to_string(rectNo)+".jpg";
+		imwrite(fileLocation, cropIm);
 		imshow("cropped " + rectNo, cropIm);
 		cvWaitKey();
 		cvDestroyAllWindows();
 	}
 }
-
-static void meanshiftApproach(Mat& image)
+// r c
+// Rect(c/3,r/3,c/3,r/3)
+static void meanshiftApproach(Mat& image, int imageNo)
 {
 	//cols*rows// image 2 = 1296*968
 	Mat greyscaleImage, meanshiftImage, meanshiftImage2;
@@ -321,7 +329,7 @@ static void meanshiftApproach(Mat& image)
 	Mat meanshiftFlood = meanshiftImage.clone();
 	//floodFillPostprocess(test, Scalar::all(2));
 	vector<Rect> rects;
-	rects = floodFillPostprocess(meanshiftFlood, Scalar::all(2));
+	rects = floodFillPostprocess(meanshiftFlood, meanshiftImage.rows, meanshiftImage.cols, Scalar::all(2));
 	vector<Rect> newRects, mergedRects, filteredRects;
 
 	//Filter out floor/ceiling segments
@@ -329,8 +337,8 @@ static void meanshiftApproach(Mat& image)
 	//newRects = rects;
 	mergeRects(newRects, mergedRects);
 	filteredRects = filterRects(mergedRects);
-	applyBoundingRect(image, filteredRects, (0, 0, 0xFF));
-	getCroppedImages(image, filteredRects);
+	//applyBoundingRect(image, filteredRects, (0, 0, 0xFF));
+	getCroppedImages(image, filteredRects, imageNo);
 	imshow("meanshift22AfterFlood", meanshiftFlood);
 	imshow("meanshift22", meanshiftImage);
 	namedWindow("rects", WINDOW_NORMAL);
@@ -338,6 +346,44 @@ static void meanshiftApproach(Mat& image)
 	//imshow("bin", bin);
 }
 
+
+static void meanshiftApproach2(Mat& image)
+{
+	//cols*rows// image 2 = 1296*968
+	Mat greyscaleImage, meanshiftImage, meanshiftImage2;
+	// (so-spatial rad, sr-colour window)
+	pyrMeanShiftFiltering(image, meanshiftImage, 18, 38, 2);
+	//	cvtColor(meanshiftImage, greyscaleImage, CV_BGR2GRAY);
+	//Mat test = greyscaleImage.clone();
+	Mat meanshiftFlood = meanshiftImage.clone();
+	//floodFillPostprocess(test, Scalar::all(2));
+	vector<Rect> rects;
+	rects = floodFillPostprocess(meanshiftFlood, meanshiftImage.rows, meanshiftImage.cols, Scalar::all(2));
+	vector<Rect> newRects, mergedRects, filteredRects;
+	newRects = filterBoundaryRects(rects, image.cols, image.rows);
+	mergeRects(newRects, mergedRects);
+	applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
+
+	imshow("meanshift22AfterFlood", meanshiftFlood);
+	imshow("meanshift22", meanshiftImage);
+	namedWindow("rects", WINDOW_NORMAL);
+	imshow("rects", image);
+	//imshow("bin", bin);
+}
+static void applyCanny(Mat& image) {
+	Mat greyscaleImage;
+	cvtColor(image, greyscaleImage, CV_BGR2GRAY);
+	Mat greyscaleCopy = greyscaleImage.clone();
+
+	//Edge detection
+	Mat edgesResult;
+	Canny(greyscaleImage, edgesResult, 80, 180, 3);
+	edgesResult.convertTo(edgesResult, CV_8U);
+	imshow("greysscale", greyscaleCopy);
+	imshow("canny", edgesResult);
+	waitKey();
+	destroyAllWindows();
+}
 int main(int argc, const char** argv)
 {
 	char* file_location = "Paintings/";
@@ -352,7 +398,20 @@ int main(int argc, const char** argv)
 		"Painting3.jpg",//6
 		"Painting4.jpg",//7
 		"Painting5.jpg",//8
-		"Painting6.jpg"//9
+		"Painting6.jpg",//9
+		"0-0.jpg", //10
+		"0-1.jpg", //11
+		"1-0.jpg", //12
+		"1-1.jpg",//13
+		"2-0.jpg", //14
+		"2-1.jpg", //15
+		"2-2.jpg", //16
+		"3-0.jpg", //17
+		"3-1.jpg", //18
+		"3-2.jpg", //19
+		"3-3.jpg" //20
+		//"4_1_seg.jpg",//19	
+		//"Painting5_seg.jpg"//20
 	};
 
 	// Load images
@@ -366,14 +425,21 @@ int main(int argc, const char** argv)
 		if (image[file_no].empty())
 		{
 			cout << "Could not open " << image[file_no] << endl;
-			return -1;
+			return -12;
 		}
 	}
 	Mat* gallerys = new Mat[NO_GALLERYS];
 	Mat* templates = new Mat[NO_PAINTINGS];
+	Mat* cropped = new Mat[number_of_images - (NO_GALLERYS + NO_PAINTINGS)];
 	for (int i = 0; i < number_of_images; i++) {
 		if (i < 4) {
 			gallerys[i] = image[i];
+		}
+		else if (i > 9) {
+			cropped[i-10] = image[i];
+			meanshiftApproach2(image[i]);
+			waitKey();
+			destroyAllWindows();
 		}
 		else {
 			templates[i - 4] = image[i];
@@ -381,18 +447,72 @@ int main(int argc, const char** argv)
 	}
 	int choice;
 	int i = 0;
-	while (i < NO_GALLERYS) {
+	int noTemplates = 6;
+/*	meanshiftApproach2(cropped[0]);
+	waitKey();
+	Mat croppedIm = cropped[2];
+	MatND imHist = ComputeHistogram(croppedIm);
+	waitKey();
+	*/
+	//Mat croppedIm = templates[0];
+	/*for (int templateNo = 0; templateNo < noTemplates; templateNo++)
+	{
+
+		
+		Mat newTemplate, greyTemplate, greyIm;
+		Mat bin, c1, c2;
+		Size s = Size(200,200);
+		resize(templates[templateNo], newTemplate, croppedIm.size());
+		newTemplate = cropped[3];
+		MatND templateHist = ComputeHistogram(newTemplate);
+		waitKey();
+		//hist(croppedIm);
+		//hist(newTemplate);
+		double corr = compareHist(templateHist, imHist, CV_COMP_CORREL);
+		
+		cvtColor(newTemplate, c1, COLOR_BGR2HSV);
+		cvtColor(croppedIm, c2, COLOR_BGR2HSV);
+		cvtColor(c1, greyTemplate, COLOR_BGR2GRAY);
+		cvtColor(c2, greyIm, COLOR_BGR2GRAY);
+		
+		//threshold(greyIm, bin,150, 255, CV_THRESH_BINARY);
+
+		//cvtColor(newTemplate, greyTemplate, COLOR_BGR2HSV);
+		//cvtColor(croppedIm, greyIm, COLOR_BGR2HSV);
+		imshow("resizedTemplate", greyTemplate);
+		imshow("greyIm", greyIm);
+		waitKey();
+		destroyAllWindows();
+		Mat result;
+		int result_cols = croppedIm.cols - newTemplate.cols + 1;
+		int result_rows = croppedIm.rows - newTemplate.rows + 1;
+		result.create(result_rows, result_cols, CV_32FC1);
+
+		matchTemplate(greyTemplate, greyIm, result, TM_CCOEFF_NORMED);
+
+		double minVal; double maxVal; Point minLoc; Point maxLoc;
+		Point matchLoc;
+		minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+		cout << "result" << templateNo << " : " << maxVal << " | " << corr << "\n";
+	}*/
+	
+	
+	//The following goes from original input gallery to individual regions in galleries
+	//These are cropped and saved for testing purposes
+
+	/*while (i < NO_GALLERYS) {
 		Mat currentImage = gallerys[i];
 		Mat imCopy = currentImage.clone();
 		//Mat k = kmeans_clustering(imCopy, 5, 1);
 		//houghLinesApproach(k);
 		//histApproach(k);
-		meanshiftApproach(imCopy);
+		meanshiftApproach(imCopy,i);
 		//imshow("imagek", k);
 		i++;
 		choice = cvWaitKey();
 		cvDestroyAllWindows();
-	}
+	}*/
+
 }
 static void histApproach(Mat& image)
 {
