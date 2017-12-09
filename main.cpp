@@ -346,28 +346,31 @@ static void meanshiftApproach(Mat& image, int imageNo)
 	//imshow("bin", bin);
 }
 
-
-static void meanshiftApproach2(Mat& image)
+//This is attempt to remove the frame from an image
+//Returns an image which may have been cropped if it detected the frame
+static Mat meanshiftApproach2(Mat& image)
 {
-	//cols*rows// image 2 = 1296*968
-	Mat greyscaleImage, meanshiftImage, meanshiftImage2;
+	Mat meanshiftImage;
 	// (so-spatial rad, sr-colour window)
 	pyrMeanShiftFiltering(image, meanshiftImage, 18, 38, 2);
-	//	cvtColor(meanshiftImage, greyscaleImage, CV_BGR2GRAY);
-	//Mat test = greyscaleImage.clone();
 	Mat meanshiftFlood = meanshiftImage.clone();
-	//floodFillPostprocess(test, Scalar::all(2));
 	vector<Rect> rects;
 	rects = floodFillPostprocess(meanshiftFlood, meanshiftImage.rows, meanshiftImage.cols, Scalar::all(2));
 	vector<Rect> newRects, mergedRects, filteredRects;
 	newRects = filterBoundaryRects(rects, image.cols, image.rows);
 	mergeRects(newRects, mergedRects);
-	applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
+	//applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
 
-	imshow("meanshift22AfterFlood", meanshiftFlood);
-	imshow("meanshift22", meanshiftImage);
-	namedWindow("rects", WINDOW_NORMAL);
-	imshow("rects", image);
+	//imshow("meanshift22AfterFlood", meanshiftFlood);
+	//imshow("meanshift22", meanshiftImage);
+
+	if (mergedRects.size() == 1) {
+		Rect r = mergedRects.back();
+		if (r.area() > (image.cols*image.rows*0.7)) { //Only return if rect covers at least 70 % of original image
+			return image(r);
+		}
+	}
+	return image;
 	//imshow("bin", bin);
 }
 static void applyCanny(Mat& image) {
@@ -384,6 +387,47 @@ static void applyCanny(Mat& image) {
 	waitKey();
 	destroyAllWindows();
 }
+
+//Computes correlation value from Hue & Sat histogram comparison 
+//Between two images
+static double compareImages(Mat& image1, Mat& image2)
+{
+	Mat im1, im2;
+	cvtColor(image1, im1, COLOR_BGR2HSV);
+	cvtColor(image2, im2, COLOR_BGR2HSV);
+
+	imshow("im1", im1);
+	imshow("im2", im2);
+
+	//Setup params of HS histogram 
+	int h_bins = 50; int s_bins = 60;
+	int histSize[] = { h_bins, s_bins };
+	float h_ranges[] = { 0, 180 };
+	float s_ranges[] = { 0, 256 };
+	const float* ranges[] = { h_ranges, s_ranges };
+	int channels[] = { 0, 1 };
+
+	MatND im1Hist, im2Hist;
+
+	calcHist(&im1, 1, channels, Mat(), im1Hist, 2, histSize, ranges, true, false);
+	normalize(im1Hist, im1Hist, 0, 1, NORM_MINMAX, -1, Mat());
+
+	calcHist(&im2, 1, channels, Mat(), im2Hist, 2, histSize, ranges, true, false);
+	normalize(im2Hist, im2Hist, 0, 1, NORM_MINMAX, -1, Mat());
+
+	double corr1 = compareHist(im1Hist, im2Hist, CV_COMP_CORREL);
+	
+/*	Mat display_image = Mat::zeros(image1.size(), CV_8UC3);
+	Draw1DHistogram(&im1Hist, 1, display_image);
+	imshow("Im1 histogram", display_image);
+
+
+	Mat display_image2 = Mat::zeros(image2.size(), CV_8UC3);
+	Draw1DHistogram(&im2Hist, 1, display_image2);
+	imshow("im2 histogram", display_image2);
+*/
+	return corr1;
+}
 int main(int argc, const char** argv)
 {
 	char* file_location = "Paintings/";
@@ -399,6 +443,9 @@ int main(int argc, const char** argv)
 		"Painting4.jpg",//7
 		"Painting5.jpg",//8
 		"Painting6.jpg",//9
+		//"3-1Test.jpg",
+		//"Painting6Test.jpg",
+		//"Painting3Test.jpg",
 		"0-0.jpg", //10
 		"0-1.jpg", //11
 		"1-0.jpg", //12
@@ -430,72 +477,42 @@ int main(int argc, const char** argv)
 	}
 	Mat* gallerys = new Mat[NO_GALLERYS];
 	Mat* templates = new Mat[NO_PAINTINGS];
-	Mat* cropped = new Mat[number_of_images - (NO_GALLERYS + NO_PAINTINGS)];
+	int noCropped = number_of_images - (NO_GALLERYS + NO_PAINTINGS);
+	Mat* cropped = new Mat[noCropped];
+
 	for (int i = 0; i < number_of_images; i++) {
 		if (i < 4) {
 			gallerys[i] = image[i];
 		}
 		else if (i > 9) {
 			cropped[i-10] = image[i];
-			meanshiftApproach2(image[i]);
-			waitKey();
-			destroyAllWindows();
 		}
 		else {
 			templates[i - 4] = image[i];
 		}
 	}
-	int choice;
-	int i = 0;
-	int noTemplates = 6;
-/*	meanshiftApproach2(cropped[0]);
-	waitKey();
-	Mat croppedIm = cropped[2];
-	MatND imHist = ComputeHistogram(croppedIm);
-	waitKey();
-	*/
-	//Mat croppedIm = templates[0];
-	/*for (int templateNo = 0; templateNo < noTemplates; templateNo++)
-	{
 
-		
-		Mat newTemplate, greyTemplate, greyIm;
-		Mat bin, c1, c2;
-		Size s = Size(200,200);
-		resize(templates[templateNo], newTemplate, croppedIm.size());
-		newTemplate = cropped[3];
-		MatND templateHist = ComputeHistogram(newTemplate);
-		waitKey();
-		//hist(croppedIm);
-		//hist(newTemplate);
-		double corr = compareHist(templateHist, imHist, CV_COMP_CORREL);
-		
-		cvtColor(newTemplate, c1, COLOR_BGR2HSV);
-		cvtColor(croppedIm, c2, COLOR_BGR2HSV);
-		cvtColor(c1, greyTemplate, COLOR_BGR2GRAY);
-		cvtColor(c2, greyIm, COLOR_BGR2GRAY);
-		
-		//threshold(greyIm, bin,150, 255, CV_THRESH_BINARY);
+	cout << "CroppedNo , " << "Template No  " << " | " << "CorrRes";
+	for (int croppedNo = 0; croppedNo < noCropped; croppedNo++) {
+		Mat im = cropped[croppedNo];
 
-		//cvtColor(newTemplate, greyTemplate, COLOR_BGR2HSV);
-		//cvtColor(croppedIm, greyIm, COLOR_BGR2HSV);
-		imshow("resizedTemplate", greyTemplate);
-		imshow("greyIm", greyIm);
-		waitKey();
-		destroyAllWindows();
-		Mat result;
-		int result_cols = croppedIm.cols - newTemplate.cols + 1;
-		int result_rows = croppedIm.rows - newTemplate.rows + 1;
-		result.create(result_rows, result_cols, CV_32FC1);
+		//Meanshift to try remove frame if poss
+		Mat croppedIm = meanshiftApproach2(im);
 
-		matchTemplate(greyTemplate, greyIm, result, TM_CCOEFF_NORMED);
+		for (int templateNo = 0; templateNo < NO_PAINTINGS; templateNo++)
+		{
+			Mat template1;
+			//Resize template painting to same as croppedIm
+			resize(templates[templateNo], template1, croppedIm.size());
+			
+			//Compare the hist of both
+			double corr = compareImages(croppedIm, template1);
 
-		double minVal; double maxVal; Point minLoc; Point maxLoc;
-		Point matchLoc;
-		minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
-		cout << "result" << templateNo << " : " << maxVal << " | " << corr << "\n";
-	}*/
-	
+			//print result
+			cout << croppedNo << " , " << templateNo << " | " << corr << "\n";
+		}
+
+	}
 	
 	//The following goes from original input gallery to individual regions in galleries
 	//These are cropped and saved for testing purposes
