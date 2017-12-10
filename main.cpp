@@ -361,8 +361,8 @@ static Mat meanshiftApproach2(Mat& image)
 	mergeRects(newRects, mergedRects);
 	//applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
 
-	imshow("meanshift22AfterFlood", meanshiftFlood);
-	imshow("meanshift22", meanshiftImage);
+	//imshow("meanshift22AfterFlood", meanshiftFlood);
+	//imshow("meanshift22", meanshiftImage);
 
 	if (mergedRects.size() == 1) {
 		Rect r = mergedRects.back();
@@ -542,7 +542,7 @@ int main(int argc, const char** argv)
 		cout << "\n\n";
 	}
 	waitKey();
-	
+	waitKey();
 	//The following goes from original input gallery to individual regions in galleries
 	//These are cropped and saved for testing purposes
 
