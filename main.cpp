@@ -395,8 +395,8 @@ static double compareImages(Mat& image1, Mat& image2)
 	cvtColor(image1, im1, COLOR_BGR2HSV);
 	cvtColor(image2, im2, COLOR_BGR2HSV);
 
-	imshow("im1", im1);
-	imshow("im2", im2);
+//	imshow("im1", im1);
+	//imshow("im2", im2);
 
 	//Setup params of HS histogram 
 	int h_bins = 50; int s_bins = 60;
@@ -415,7 +415,7 @@ static double compareImages(Mat& image1, Mat& image2)
 	normalize(im2Hist, im2Hist, 0, 1, NORM_MINMAX, -1, Mat());
 
 	double corr1 = compareHist(im1Hist, im2Hist, CV_COMP_CORREL);
-	
+	/*
 	Mat display_image2 = Mat::zeros(image2.size(), CV_8UC3);
 	Draw1DHistogram(&im2Hist, 1, display_image2);
 	imshow("im2 histogram", display_image2);
@@ -423,7 +423,26 @@ static double compareImages(Mat& image1, Mat& image2)
 	Mat display_image = Mat::zeros(image1.size(), CV_8UC3);
 	Draw1DHistogram(&im1Hist, 1, display_image);
 	imshow("Im1 histogram", display_image);
+	*/
 	return corr1;
+}
+
+static double templateMatching(Mat& im1, Mat& temp)
+{
+	Mat greyIm, greyTemp;
+	cvtColor(im1, greyIm, COLOR_BGR2GRAY);
+	cvtColor(temp, greyTemp, COLOR_BGR2GRAY);
+	//imshow("greyIm", greyIm);
+	//imshow("greyTemp", greyTemp);
+	Mat result;
+	int result_cols = im1.cols - temp.cols + 1;
+	int result_rows = im1.rows - temp.rows + 1;
+	result.create(result_rows, result_cols, CV_32FC1);
+	matchTemplate(greyTemp, greyIm, result, CV_TM_CCOEFF_NORMED);
+	double minVal; double maxVal; Point minLoc; Point maxLoc;
+	Point matchLoc;
+	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+	return maxVal;
 }
 int main(int argc, const char** argv)
 {
@@ -489,29 +508,36 @@ int main(int argc, const char** argv)
 		}
 	}
 
-	cout << "CroppedNo " << "Template No  " << " | " << "CorrRes\n";
-	for (int croppedNo = 7; croppedNo < noCropped; croppedNo++) {
+	cout << "CroppedNo " << "Template No  " << " | " << "CorrRes" << " tempmatchRes\n";
+	for (int croppedNo = 0; croppedNo < noCropped; croppedNo++) {
 		Mat im = cropped[croppedNo];
 
 		//Meanshift to try remove frame if poss
 		Mat croppedIm = meanshiftApproach2(im);
-		imshow("croppedIm", croppedIm);
-		imshow("Im", im);
-		waitKey();
-		destroyAllWindows();
+		//Write cropped image to file 
+		String fileLocation = "cropped/" + to_string(croppedNo) + ".jpg";
+		imwrite(fileLocation, croppedIm);
+
+		//imshow("croppedIm", croppedIm);
+		//imshow("Im", im);
+		//waitKey();
+		//destroyAllWindows();
 		for (int templateNo = 0; templateNo < NO_PAINTINGS; templateNo++)
 		{
 			Mat template1;
 			//Resize template painting to same as croppedIm
-			resize(templates[templateNo], template1, croppedIm.size());
+			resize(templates[templateNo], template1,croppedIm.size());
 			
 			//Compare the hist of both
 			double corr = compareImages(croppedIm, template1);
 
+			//Template Matching Res
+			double tempRes = templateMatching(croppedIm, template1);
+
 			//print result
-			cout << croppedNo << " , " << templateNo+1 << " | " << corr << "\n";
-			waitKey();
-			destroyAllWindows();
+			cout << croppedNo << " , " << templateNo+1 << " | " << corr << " | "<< tempRes << "\n";
+		//	waitKey();
+			//destroyAllWindows();
 		}
 		cout << "\n\n";
 	}
