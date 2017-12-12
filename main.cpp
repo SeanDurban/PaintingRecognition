@@ -306,11 +306,11 @@ static void getCroppedImages(Mat& image, vector<Rect> rects, int imageNo)
 		Mat cropIm = image(boundRect);
 
 		//Write cropped image to file 
-		String fileLocation = "Paintings/" + to_string(imageNo) +"-"+ to_string(rectNo)+".jpg";
+		String fileLocation = "Paintings/Zoom" + to_string(imageNo) +"-"+ to_string(rectNo)+".jpg";
 		imwrite(fileLocation, cropIm);
-		imshow("cropped " + rectNo, cropIm);
-		cvWaitKey();
-		cvDestroyAllWindows();
+		//imshow("cropped " + rectNo, cropIm);
+		//cvWaitKey();
+		//cvDestroyAllWindows();
 	}
 }
 
@@ -401,6 +401,7 @@ static double compareImages(Mat& image1, Mat& image2)
 
 	double corr = compareHist(im1Hist, im2Hist, CV_COMP_CORREL);
 	
+	/*
 	Mat display_image2 = Mat::zeros(image2.size(), CV_8UC3);
 	Draw1DHistogram(&im2Hist, 1, display_image2);
 	imshow("im2 histogram", display_image2);
@@ -411,6 +412,7 @@ static double compareImages(Mat& image1, Mat& image2)
 	
 	waitKey(); 
 	destroyAllWindows();
+	*/
 	return corr;
 }
 
@@ -472,7 +474,14 @@ static void displayGT(Mat& image, vector<vector<Point>> pts, int galleryNo)
 	imwrite(fileLocation, image);
 	imshow("GT", image);
 }
-
+static Rect zoom(Mat& image, double zoomFactor)
+{
+	int x = image.cols*zoomFactor;
+	int y = image.rows*zoomFactor;
+	int w = (image.cols *(1 - zoomFactor)) - x;
+	int h = (image.rows*(1 - zoomFactor)) - y;
+	return Rect(x, y, w, h);
+}
 int main(int argc, const char** argv)
 {
 	char* file_location = "Paintings/";
@@ -487,23 +496,7 @@ int main(int argc, const char** argv)
 		"Painting3.jpg",//6
 		"Painting4.jpg",//7
 		"Painting5.jpg",//8
-		"Painting6.jpg",//9
-		//"3-1Test.jpg",
-		//"Painting6Test.jpg",
-		//"Painting3Test.jpg",
-		"0-0.jpg", //10
-		"0-1.jpg", //11
-		"1-0.jpg", //12
-		"1-1.jpg",//13
-		"2-0.jpg", //14
-		"2-1.jpg", //15
-		"2-2.jpg", //16
-		"3-0.jpg", //17
-		"3-1.jpg", //18
-		"3-2.jpg", //19
-		"3-3.jpg" //20
-		//"4_1_seg.jpg",//19	
-		//"Painting5_seg.jpg"//20
+		"Painting6.jpg"//9
 	};
 
 	// Load images
@@ -522,15 +515,10 @@ int main(int argc, const char** argv)
 	}
 	Mat* gallerys = new Mat[NO_GALLERYS];
 	Mat* templates = new Mat[NO_PAINTINGS];
-	int noCropped = number_of_images - (NO_GALLERYS + NO_PAINTINGS);
-	Mat* cropped = new Mat[noCropped];
 
 	for (int i = 0; i < number_of_images; i++) {
 		if (i < 4) {
 			gallerys[i] = image[i];
-		}
-		else if (i > 9) {
-			cropped[i-10] = image[i];
 		}
 		else {
 			templates[i - 4] = image[i];
@@ -551,7 +539,7 @@ int main(int argc, const char** argv)
 
 
 
-	for (int galleryNo = 1; galleryNo < NO_GALLERYS; galleryNo++) {
+	for (int galleryNo = 0; galleryNo < NO_GALLERYS; galleryNo++) {
 		Mat currentImage = gallerys[galleryNo];
 		Mat imCopy = currentImage.clone();
 		vector<Rect> gallerySegments = meanshiftApproach(imCopy);
@@ -562,7 +550,7 @@ int main(int argc, const char** argv)
 			Rect r = gallerySegments.at(galleySegNo);
 
 			//Meanshift to try remove frame if poss
-			Rect paintingRect = meanshiftApproach2(imCopy(r));
+		/*	Rect paintingRect = meanshiftApproach2(imCopy(r));
 			if (paintingRect.area() == 0) {
 				paintingRect = r;
 			}
@@ -570,10 +558,19 @@ int main(int argc, const char** argv)
 				paintingRect.x += r.x;
 				paintingRect.y += r.y;
 			}
-			Mat croppedIm =  imCopy(paintingRect);
+			Mat croppedIm =  imCopy(paintingRect);*/
+			Mat croppedIm1 = imCopy(r);
+			Rect paintingRect= zoom(imCopy(r),0.14);
+			Mat croppedIm = croppedIm1(paintingRect);
+			paintingRect.x += r.x;
+			paintingRect.y += r.y;
+			//Write cropped image to file 
+			String fileLocation = "Cropped/Zoom-" + to_string(galleryNo+1) + "-" + to_string(galleySegNo) + ".jpg";
+			imwrite(fileLocation, croppedIm);
 			imshow("croppedIm", croppedIm);
-			waitKey();
-			destroyAllWindows();
+			imshow("prezoom", imCopy(r));
+		//	waitKey();
+			//destroyAllWindows();
 			//imshow("Im", imCopy);
 			double tempMax = 0.0;
 			int maxIndex = 0;
@@ -583,9 +580,9 @@ int main(int argc, const char** argv)
 				Mat template1;
 				//Resize template painting to same as croppedIm
 				resize(templates[templateNo], template1, croppedIm.size());
-				imshow("template", template1);
-				waitKey();
-				destroyAllWindows();
+			//	imshow("template", template1);
+				//waitKey();
+				//destroyAllWindows();
 				//Compare the hist of both
 				double corr = compareImages(croppedIm, template1);
 
@@ -601,8 +598,8 @@ int main(int argc, const char** argv)
 				//	waitKey();
 					//destroyAllWindows();
 			}
-			double threshold = tempMax + histRes;
-			if (threshold >= 0.59) {
+			double threshold = (tempMax + histRes)/2;
+			if (threshold >= 0.4) {
 				cout << "Recognised as Painting" << maxIndex + 1 << "   The thres: " << threshold ;
 				resRect.push_back(paintingRect);
 				resPaintings.push_back(maxIndex + 1);
@@ -623,8 +620,8 @@ int main(int argc, const char** argv)
 		//Write resulting image to file 
 		String fileLocation = "Results/" + to_string(galleryNo) + ".jpg";
 		imwrite(fileLocation, currentImage);
-		//waitKey();
-		//destroyAllWindows();
+//		waitKey();
+	//	destroyAllWindows();
 	}
 	waitKey();
 }
