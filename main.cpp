@@ -3,12 +3,19 @@
 #include <fstream>
 #define NO_GALLERYS 4
 #define NO_PAINTINGS 6
+#define MIN_OVERLAP_THRESHOLD 0.6
+#define NO_PAINTINGS_IN_GALLERIES 11
 
 using namespace std;
 vector<vector<vector<Point>>> groundTruths;
 vector<vector<String>> groundTruthStrings;
+vector<vector<int>> groundTruthPaintings;
 vector<double> dice;
 Mat gtImage;
+double precisionSum;
+double recallSum;
+double accuracySum;
+double f1Sum;
 
 Mat kmeans_clustering(Mat& image, int k, int iterations)
 {
@@ -482,6 +489,27 @@ static Rect zoom(Mat& image, double zoomFactor)
 	int h = (image.rows*(1 - zoomFactor)) - y;
 	return Rect(x, y, w, h);
 }
+static bool isCorrectPrediction(vector<Point> groundTruth, Rect result)
+{
+	int x = groundTruth.at(0).x; int y = groundTruth.at(0).y;
+	int w = groundTruth.at(2).x - x; int h = groundTruth.at(2).y - y;
+	Rect gtRect = Rect(x, y, w, h);
+	double minAreaThreshold = gtRect.area() * MIN_OVERLAP_THRESHOLD;
+	double area =(gtRect & result).area();
+	return area > minAreaThreshold;
+}
+
+static void calculateMetrics(int tp, int fp,int tn, int fn)
+{
+	double accuracy = (double) (tp + tn) / (tp + fp + fn + tn);
+	double precision = (double) (tp) / (tp + fp);
+	double recall = (double) (tp) / (tp + fn);
+	double f1Score = (2 * (recall*precision)) / recall + precision;
+	accuracySum += accuracy; precisionSum += precision; recallSum += recall; f1Sum += f1Score;
+	cout << "tp  fp  tn  fn  |  Precision   |  Recall  |  Accuracy  |  F1 Score\n";
+	cout << tp <<"  "<< fp << "  " << tn << "  " << fn << "  |  " << precision << "  |  " << recall << "  |  " << accuracy << "  |  " << f1Score << "\n";
+}
+
 int main(int argc, const char** argv)
 {
 	char* file_location = "Paintings/";
@@ -537,15 +565,26 @@ int main(int argc, const char** argv)
 	groundTruthStrings.push_back({ "Painting 4", "Painting5", "Painting6" });
 
 
-
+	groundTruthPaintings.push_back({ 2,1});
+	groundTruthPaintings.push_back({ 3,2,1 });
+	groundTruthPaintings.push_back({ 4,5,6 });
+	groundTruthPaintings.push_back({ 4,5,6 });
+	
+	double precisionSum = 0.0;
+	double recallSum = 0.0;
+	double accuracySum = 0.0;
+	double f1Sum = 0.0;
 
 	for (int galleryNo = 0; galleryNo < NO_GALLERYS; galleryNo++) {
+		cout << "\nGallery No : " << galleryNo+1 << "\n";
 		Mat currentImage = gallerys[galleryNo];
 		Mat imCopy = currentImage.clone();
 		vector<Rect> gallerySegments = meanshiftApproach(imCopy);
 		vector<Rect> resRect;
 		vector<int> resPaintings;
-		cout << "CroppedNo " << "Template No  " << " | " << "CorrRes" << " tempmatchRes\n";
+		vector<int> gtPaintings = groundTruthPaintings.at(galleryNo);
+		//cout << "CroppedNo " << "Template No  " << " | " << "CorrRes" << " tempmatchRes\n";
+
 		for (int galleySegNo = 0; galleySegNo < gallerySegments.size(); galleySegNo++) {
 			Rect r = gallerySegments.at(galleySegNo);
 
@@ -594,27 +633,37 @@ int main(int argc, const char** argv)
 					histRes = corr;
 				}
 				//print result
-				cout << galleySegNo << " , " << templateNo + 1 << " | " << corr << " | " << tempRes << "\n";
+				//cout << galleySegNo << " , " << templateNo + 1 << " | " << corr << " | " << tempRes << "\n";
 				//	waitKey();
 					//destroyAllWindows();
 			}
 			double threshold = (tempMax + histRes)/2;
 			if (threshold >= 0.4) {
-				cout << "Recognised as Painting" << maxIndex + 1 << "   The thres: " << threshold ;
+				cout << "Recognised Painting" << maxIndex + 1;// << "   The thres: " << threshold;
 				resRect.push_back(paintingRect);
 				resPaintings.push_back(maxIndex + 1);
-				cout <<"\n" << paintingRect.x << " " << paintingRect.y << " - " << paintingRect.x + paintingRect.width << " " << paintingRect.y + paintingRect.height;
-			}
-			else {
-				cout << "Failed to recognise this segment";
+			//	cout <<"\n" << paintingRect.x << " " << paintingRect.y << " - " << paintingRect.x + paintingRect.width << " " << paintingRect.y + paintingRect.height;
 			}
 			cout << "\n\n";
 		}
+		int tp = 0; int fp = 0; int tn = 0; int fn = 0;
 		applyBoundingRect(currentImage, resRect, Scalar(255, 0, 0));
 		for (int i = 0; i < resRect.size(); i++) {
 			String text = "Painting " + to_string(resPaintings.at(i));
+			int index = find(gtPaintings.begin(), gtPaintings.end(), resPaintings.at(i)) - gtPaintings.begin();
+			if (index >= 0 && index < gtPaintings.size()) {
+				if (isCorrectPrediction(groundTruths.at(galleryNo).at(index), resRect.at(i))){
+					tp++;
+				}
+				else {
+					fp++;
+				}
+			}
 			putText(currentImage, text, Point(resRect.at(i).x+5, resRect.at(i).y-20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 235,0),2, false);
 		}
+		fn += gtPaintings.size() - tp -fp;
+		tn = 0; 
+		calculateMetrics(tp, fp, tn, fn);
 		displayGT(imCopy, groundTruths.at(galleryNo), galleryNo);
 		imshow("res", currentImage);
 		//Write resulting image to file 
@@ -623,51 +672,12 @@ int main(int argc, const char** argv)
 //		waitKey();
 	//	destroyAllWindows();
 	}
+	double avgPrecision = precisionSum / NO_GALLERYS;
+	double avgRecall = recallSum / NO_GALLERYS;
+	double avgAccuracy = accuracySum / NO_GALLERYS;
+	double avgF1 = f1Sum / NO_GALLERYS;
+	cout << "\n\nAverage over all Gallerys\n";
+	cout << "Precision | Recall | Accuracy | F1 Score\n";
+	cout << avgPrecision << "  |  " << avgRecall << "  |  " << avgAccuracy << "  |  " << avgF1 << "\n";
 	waitKey();
 }
-static void histApproach(Mat& image)
-{
-	hist(image);
-	ComputeHistogram(image);
-}
-
-//From: https://docs.opencv.org/2.4/doc/tutorials/imgproc/histograms/back_projection/back_projection.html
-/*static void Hist_and_Backproj(Mat& src,int, void*)
-{
-Mat hsv, hue;
-cvtColor(src, hsv, CV_BGR2HSV);
-/// Use only the Hue value
-hue.create(hsv.size(), hsv.depth());
-int ch[] = { 0, 0 };
-mixChannels(&hsv, 1, &hue, 1, ch, 1);
-MatND hist;
-int bins = 25;
-Mat hue;
-int histSize = 25;
-float hue_range[] = { 0, 180 };
-const float* ranges = { hue_range };
-
-/// Get the Histogram and normalize it
-calcHist(&hue, 1, 0, Mat(), hist, 1, &histSize, &ranges, true, false);
-normalize(hist, hist, 0, 255, NORM_MINMAX, -1, Mat());
-
-/// Get Backprojection
-MatND backproj;
-calcBackProject(&hue, 1, 0, hist, backproj, &ranges, 1, true);
-
-/// Draw the backproj
-imshow("BackProj", backproj);
-
-/// Draw the histogram
-int w = 400; int h = 400;
-int bin_w = cvRound((double)w / histSize);
-Mat histImg = Mat::zeros(w, h, CV_8UC3);
-
-for (int i = 0; i < bins; i++)
-{
-rectangle(histImg, Point(i*bin_w, h), Point((i + 1)*bin_w, h - cvRound(hist.at<float>(i)*h / 255.0)), Scalar(0, 0, 255), -1);
-}
-
-imshow("Histogram", histImg);
-}
-*/
