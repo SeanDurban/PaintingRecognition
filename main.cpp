@@ -6,6 +6,7 @@
 
 using namespace std;
 vector<vector<vector<Point>>> groundTruths;
+vector<vector<String>> groundTruthStrings;
 vector<double> dice;
 Mat gtImage;
 
@@ -261,11 +262,7 @@ void applyBoundingRect(Mat& image, vector<Rect> rectangles, Scalar colour) {
 	}
 }
 bool overlappingRects(Rect boundRect, Rect boundRect2) {
-	Rect r1 = boundRect;
-	//Add to r1 width and height to allow it to overlap with close by rects
-	r1.width += 0;
-	r1.height += 0;
-	return ((r1 & boundRect2).area() > 0);
+	return ((boundRect & boundRect2).area() > 0);
 }
 Rect getNewRect(Rect boundRect, Rect boundRect2) {
 	int newX = min(boundRect.x, boundRect2.x);
@@ -319,24 +316,17 @@ static void getCroppedImages(Mat& image, vector<Rect> rects, int imageNo)
 
 static vector<Rect> meanshiftApproach(Mat& image)
 {
-	Mat greyscaleImage, meanshiftImage, meanshiftImage2;
+	Mat meanshiftImage;
 	// (so-spatial rad, sr-colour window)
 	pyrMeanShiftFiltering(image, meanshiftImage, 20, 56, 2);
 	Mat meanshiftFlood = meanshiftImage.clone();
 	vector<Rect> rects;
 	rects = floodFillPostprocess(meanshiftFlood, meanshiftImage.rows, meanshiftImage.cols, Scalar::all(2));
 	vector<Rect> newRects, mergedRects, filteredRects;
-
 	//Filter out floor/ceiling segments
 	newRects = filterBoundaryRects(rects, image.cols, image.rows);
 	mergeRects(newRects, mergedRects);
 	filteredRects = filterRects(mergedRects);
-	//getCroppedImages(image, filteredRects, imageNo);
-	//imshow("meanshift22AfterFlood", meanshiftFlood);
-	//imshow("meanshift22", meanshiftImage);
-	//namedWindow("rects", WINDOW_NORMAL);
-	//imshow("rects", image);
-
 	return filteredRects;
 }
 
@@ -353,11 +343,12 @@ static Rect meanshiftApproach2(Mat& image)
 	vector<Rect> newRects, mergedRects, filteredRects;
 	newRects = filterBoundaryRects(rects, image.cols, image.rows);
 	mergeRects(newRects, mergedRects);
-	//applyBoundingRect(image, mergedRects, (0, 0, 0xFF));
-
-	//imshow("meanshift22AfterFlood", meanshiftFlood);
-	//imshow("meanshift22", meanshiftImage);
-
+	//applyBoundingRect(image, mergedRects, Scalar(0, 0, 0xFF));
+	
+	//imshow("meanshift2AfterFlood", meanshiftFlood);
+	//imshow("meanshift2", meanshiftImage);
+	//waitKey();
+	//destroyAllWindows();
 	if (mergedRects.size() == 1) {
 		Rect r = mergedRects.back();
 		if (r.area() > (image.cols*image.rows*0.30)) { //Only return if rect covers at least 50 % of original image
@@ -409,7 +400,7 @@ static double compareImages(Mat& image1, Mat& image2)
 	normalize(im2Hist, im2Hist, 0, 1, NORM_MINMAX, -1, Mat());
 
 	double corr = compareHist(im1Hist, im2Hist, CV_COMP_CORREL);
-	/*
+	
 	Mat display_image2 = Mat::zeros(image2.size(), CV_8UC3);
 	Draw1DHistogram(&im2Hist, 1, display_image2);
 	imshow("im2 histogram", display_image2);
@@ -417,7 +408,9 @@ static double compareImages(Mat& image1, Mat& image2)
 	Mat display_image = Mat::zeros(image1.size(), CV_8UC3);
 	Draw1DHistogram(&im1Hist, 1, display_image);
 	imshow("Im1 histogram", display_image);
-	*/
+	
+	waitKey(); 
+	destroyAllWindows();
 	return corr;
 }
 
@@ -474,7 +467,7 @@ static void displayGT(Mat& image, vector<vector<Point>> pts, int galleryNo)
 		vector<Point> t = pts.at(i);
 		polylines(image, t, false, Scalar(255, 0, 0));
 	}
-	//Write cropped image to file 
+	//Write Ground truth image to file 
 	String fileLocation = "GT/" + to_string(galleryNo)+ ".jpg";
 	imwrite(fileLocation, image);
 	imshow("GT", image);
@@ -550,7 +543,15 @@ int main(int argc, const char** argv)
 	groundTruths.push_back({ { Point(68, 329) , Point(350, 337), Point(351, 545) , Point(75,558) },{ Point(629, 346) , Point(877, 350), Point(873, 517) , Point(627,530) },{ Point(1057, 370) , Point(1187, 374), Point(1182, 487) , Point(1053,493) } });
 	groundTruths.push_back({ { Point(176,348) , Point(298,347), Point(307,481) , Point(184,475) },{ Point(469,343) , Point(690,338), Point(692,495) , Point(472,487) },{ Point(924, 349) , Point(1161,344), Point(1156, 495) , Point(924,488) } });
 
-	for (int galleryNo = 0; galleryNo < NO_GALLERYS; galleryNo++) {
+	groundTruthStrings.push_back({ "Painting 2", "Painting1" });
+	groundTruthStrings.push_back({ "Painting 3", "Painting2", "Painting1" });
+	groundTruthStrings.push_back({ "Painting 4", "Painting5", "Painting6" });
+	groundTruthStrings.push_back({ "Painting 4", "Painting5", "Painting6" });
+
+
+
+
+	for (int galleryNo = 1; galleryNo < NO_GALLERYS; galleryNo++) {
 		Mat currentImage = gallerys[galleryNo];
 		Mat imCopy = currentImage.clone();
 		vector<Rect> gallerySegments = meanshiftApproach(imCopy);
@@ -570,10 +571,10 @@ int main(int argc, const char** argv)
 				paintingRect.y += r.y;
 			}
 			Mat croppedIm =  imCopy(paintingRect);
-			//imshow("croppedIm", croppedIm);
-			//imshow("Im", imCopy);
+			imshow("croppedIm", croppedIm);
 			waitKey();
 			destroyAllWindows();
+			//imshow("Im", imCopy);
 			double tempMax = 0.0;
 			int maxIndex = 0;
 			double histRes = 0.0;
@@ -582,7 +583,9 @@ int main(int argc, const char** argv)
 				Mat template1;
 				//Resize template painting to same as croppedIm
 				resize(templates[templateNo], template1, croppedIm.size());
-
+				imshow("template", template1);
+				waitKey();
+				destroyAllWindows();
 				//Compare the hist of both
 				double corr = compareImages(croppedIm, template1);
 
@@ -617,9 +620,13 @@ int main(int argc, const char** argv)
 		}
 		displayGT(imCopy, groundTruths.at(galleryNo), galleryNo);
 		imshow("res", currentImage);
-		waitKey();
-		destroyAllWindows();
+		//Write resulting image to file 
+		String fileLocation = "Results/" + to_string(galleryNo) + ".jpg";
+		imwrite(fileLocation, currentImage);
+		//waitKey();
+		//destroyAllWindows();
 	}
+	waitKey();
 }
 static void histApproach(Mat& image)
 {
