@@ -11,130 +11,10 @@ vector<vector<vector<Point>>> groundTruths;
 vector<vector<String>> groundTruthStrings;
 vector<vector<int>> groundTruthPaintings;
 vector<double> dice;
-Mat gtImage;
 double precisionSum;
 double recallSum;
 double accuracySum;
 double f1Sum;
-
-Mat kmeans_clustering(Mat& image, int k, int iterations)
-{
-	CV_Assert(image.type() == CV_8UC3);
-	// Populate an n*3 array of float for each of the n pixels in the image
-	Mat samples(image.rows*image.cols, image.channels(), CV_32F);
-	float* sample = samples.ptr<float>(0);
-	for (int row = 0; row<image.rows; row++)
-		for (int col = 0; col<image.cols; col++)
-			for (int channel = 0; channel < image.channels(); channel++)
-				samples.at<float>(row*image.cols + col, channel) =
-				(uchar)image.at<Vec3b>(row, col)[channel];
-	// Apply k-means clustering to cluster all the samples so that each sample
-	// is given a label and each label corresponds to a cluster with a particular
-	// centre.
-	Mat labels;
-	Mat centres;
-	kmeans(samples, k, labels, TermCriteria(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 1, 0.0001),
-		iterations, KMEANS_PP_CENTERS, centres);
-	// Put the relevant cluster centre values into a result image
-	Mat& result_image = Mat(image.size(), image.type());
-	for (int row = 0; row < image.rows; row++)
-		for (int col = 0; col < image.cols; col++)
-			for (int channel = 0; channel < image.channels(); channel++)
-				result_image.at<Vec3b>(row, col)[channel] = (uchar)centres.at<float>(*(labels.ptr<int>(row*image.cols + col)), channel);
-	return result_image;
-}
-
-void hist(Mat& src)
-{
-	Mat hsv;
-	cvtColor(src, hsv, CV_BGR2HSV);
-
-	// Quantize the hue to 30 levels
-	// and the saturation to 32 levels
-	int hbins = 30, sbins = 32;
-	int histSize[] = { hbins, sbins };
-	// hue varies from 0 to 179, see cvtColor
-	float hranges[] = { 0, 180 };
-	// saturation varies from 0 (black-gray-white) to
-	// 255 (pure spectrum color)
-	float sranges[] = { 0, 256 };
-	const float* ranges[] = { hranges, sranges };
-	MatND hist;
-	// we compute the histogram from the 0-th and 1-st channels
-	int channels[] = { 0, 1 };
-
-	calcHist(&hsv, 1, channels, Mat(), // do not use mask
-		hist, 2, histSize, ranges,
-		true, // the histogram is uniform
-		false);
-	double maxVal = 0;
-	minMaxLoc(hist, 0, &maxVal, 0, 0);
-
-	int scale = 10;
-	Mat histImg = Mat::zeros(sbins*scale, hbins * 10, CV_8UC3);
-
-	for (int h = 0; h < hbins; h++)
-	{
-		for (int s = 0; s < sbins; s++)
-		{
-			float binVal = hist.at<float>(h, s);
-			int intensity = cvRound(binVal * 255 / maxVal);
-			rectangle(histImg, Point(h*scale, s*scale),
-				Point((h + 1)*scale - 1, (s + 1)*scale - 1),
-				Scalar::all(intensity),
-				CV_FILLED);
-		}
-}
-	//int min, max, minP, maxP;
-	//cvGetMinMaxHistValue(hist, min*, max*, minP*, maxP*);
-
-	//namedWindow("Source", 1);
-	//imshow("Source", src);
-
-	namedWindow("H-S Histogram", 1);
-	imshow("H-S Histogram", histImg);
-	waitKey();
-}
-
-
-
-static MatND ComputeHistogram(Mat& image)
-{
-
-	Mat mImage = image.clone();
-	int mNumberChannels;
-	int* mChannelNumbers;
-	int* mNumberBins;
-	float mChannelRange[2];
-	MatND mHistogram;
-	mNumberChannels = mImage.channels();
-	mChannelNumbers = new int[mNumberChannels];
-	mNumberBins = new int[mNumberChannels];
-	for (int count = 0; count<mNumberChannels; count++)
-	{
-		mChannelNumbers[count] = count;
-		mNumberBins[count] = 20;
-	}
-
-	int mMinimumSaturation = 25;
-	int mMinimumValue = 25;
-	int mMaximumValue = 230;
-	mChannelRange[0] = 0.0;
-	mChannelRange[1] = 180.0;
-	Mat hsv_image, hue_image, mask_image;
-	cvtColor(mImage, hsv_image, CV_BGR2HSV);
-	inRange(hsv_image, Scalar(0, mMinimumSaturation, mMinimumValue), Scalar(180, 256, mMaximumValue), mask_image);
-	int channels[] = { 0,0 };
-	hue_image.create(mImage.size(), mImage.depth());
-	mixChannels(&hsv_image, 1, &hue_image, 1, channels, 1);
-	const float* channel_ranges = mChannelRange;
-	calcHist(&hue_image, 1, 0, mask_image, mHistogram, 1, mNumberBins, &channel_ranges);
-	Mat display_image = Mat::zeros(mImage.size(), CV_8UC3);
-	Draw1DHistogram(&mHistogram, 1, display_image);
-	imshow("histogram", display_image);
-	return mHistogram;
-//	waitKey();
-}
 
 static void Draw1DHistogram(MatND histograms[], int number_of_histograms, Mat& display_image)
 {
@@ -170,45 +50,10 @@ static void Draw1DHistogram(MatND histograms[], int number_of_histograms, Mat& d
 		}
 	}
 }
-static void houghLinesApproach(Mat& image)
-{
-	Mat hsv, greyscale, bin, canny;
-	cvtColor(image, hsv, CV_BGR2HSV);
-	cvtColor(hsv, greyscale, CV_BGR2GRAY);
-	threshold(greyscale, bin, 120, 255, THRESH_BINARY_INV | THRESH_OTSU);
-	Canny(greyscale, canny, 50, 200, 3);
 
-	//Houghlines
-	vector<Vec2f> lines;
-	/*HoughLines(canny, lines, 1, CV_PI / 180, 100, 0, 0);
-
-	for (size_t i = 0; i < lines.size(); i++)
-	{
-		float rho = lines[i][0], theta = lines[i][1];
-		Point pt1, pt2;
-		double a = cos(theta), b = sin(theta);
-		double x0 = a*rho, y0 = b*rho;
-		pt1.x = cvRound(x0 + 1000 * (-b));
-		pt1.y = cvRound(y0 + 1000 * (a));
-		pt2.x = cvRound(x0 - 1000 * (-b));
-		pt2.y = cvRound(y0 - 1000 * (a));
-		line(image, pt1, pt2, Scalar(0, 0, 0), 3, CV_AA);
-	}
-	*/
-	//houghlinesp
-	vector<Vec4i> lines2;
-	Mat linesRes = Mat::zeros(image.size(), image.type());
-	HoughLinesP(canny, lines2, 1, CV_PI / 90, 90, 70, 15);
-	for (size_t i = 0; i < lines2.size(); i++)
-	{
-		Vec4i l = lines2[i];
-		rectangle(linesRes, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255, 0, 0),1,8,0 );
-		//line(test, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255, 0, 0), 5, CV_AA);
-	}
-	imshow("Houghlines", linesRes);
-	imshow("Canny", canny);
-}
-
+//Applies floodfill to a meanshift filtered image
+//Segementation step
+//Returns a vector of bounding rects for the segments found
 static vector<Rect> floodFillPostprocess(Mat& img, int rows, int cols, const Scalar& colorDiff = Scalar::all(1))
 {
 	vector<Rect> rects;
@@ -282,6 +127,7 @@ Rect getNewRect(Rect boundRect, Rect boundRect2) {
 	int newHeight = max(r1y2, r2y2) - newY;
 	return Rect(newX, newY, newWidth, newHeight);
 }
+//Filters out rects which are on the boundary of the image (i.e include points at the edge)
 static vector<Rect> filterBoundaryRects(vector<Rect> rectangles, int xmax, int ymax)
 {
 	vector<Rect> newRects;
@@ -295,6 +141,7 @@ static vector<Rect> filterBoundaryRects(vector<Rect> rectangles, int xmax, int y
 	}
 	return newRects;
 }
+//Filters out rects below a set size
 static vector<Rect> filterRects(vector<Rect> rectangles)
 {
 	vector<Rect> newRects;
@@ -311,16 +158,11 @@ static void getCroppedImages(Mat& image, vector<Rect> rects, int imageNo)
 	for (int rectNo = 0; rectNo < (int)rects.size(); rectNo++) {
 		Rect boundRect = rects[rectNo];
 		Mat cropIm = image(boundRect);
-
-		//Write cropped image to file 
-		String fileLocation = "Paintings/Zoom" + to_string(imageNo) +"-"+ to_string(rectNo)+".jpg";
-		imwrite(fileLocation, cropIm);
-		//imshow("cropped " + rectNo, cropIm);
-		//cvWaitKey();
-		//cvDestroyAllWindows();
 	}
 }
 
+//Returns a vector of rects which represent the segments believed to be paintings in the image provided
+//Uses meanshift segmentation and rect classification to determine this vector.
 static vector<Rect> meanshiftApproach(Mat& image)
 {
 	Mat meanshiftImage;
@@ -338,7 +180,8 @@ static vector<Rect> meanshiftApproach(Mat& image)
 }
 
 //This is attempt to remove the frame from an image
-//Returns an image which may have been cropped if it detected the frame
+//Returns a rect of the image excluding the frame if one found
+//Otherwise returns empty rect
 static Rect meanshiftApproach2(Mat& image)
 {
 	Mat meanshiftImage;
@@ -350,12 +193,6 @@ static Rect meanshiftApproach2(Mat& image)
 	vector<Rect> newRects, mergedRects, filteredRects;
 	newRects = filterBoundaryRects(rects, image.cols, image.rows);
 	mergeRects(newRects, mergedRects);
-	//applyBoundingRect(image, mergedRects, Scalar(0, 0, 0xFF));
-	
-	//imshow("meanshift2AfterFlood", meanshiftFlood);
-	//imshow("meanshift2", meanshiftImage);
-	//waitKey();
-	//destroyAllWindows();
 	if (mergedRects.size() == 1) {
 		Rect r = mergedRects.back();
 		if (r.area() > (image.cols*image.rows*0.30)) { //Only return if rect covers at least 50 % of original image
@@ -363,20 +200,6 @@ static Rect meanshiftApproach2(Mat& image)
 		}
 	}
 	return Rect(0,0,0,0);
-}
-static void applyCanny(Mat& image) {
-	Mat greyscaleImage;
-	cvtColor(image, greyscaleImage, CV_BGR2GRAY);
-	Mat greyscaleCopy = greyscaleImage.clone();
-
-	//Edge detection
-	Mat edgesResult;
-	Canny(greyscaleImage, edgesResult, 80, 180, 3);
-	edgesResult.convertTo(edgesResult, CV_8U);
-	imshow("greysscale", greyscaleCopy);
-	imshow("canny", edgesResult);
-	waitKey();
-	destroyAllWindows();
 }
 
 //Computes correlation value from Hue & Sat histogram comparison 
@@ -387,8 +210,6 @@ static double compareImages(Mat& image1, Mat& image2)
 	cvtColor(image1, im1, COLOR_BGR2HSV);
 	cvtColor(image2, im2, COLOR_BGR2HSV);
 
-//	imshow("im1", im1);
-	//imshow("im2", im2);
 
 	//Setup params of HS histogram 
 	int h_bins = 50; int s_bins = 60;
@@ -408,7 +229,7 @@ static double compareImages(Mat& image1, Mat& image2)
 
 	double corr = compareHist(im1Hist, im2Hist, CV_COMP_CORREL);
 	
-	/*
+	/* This code displays the generated histograms
 	Mat display_image2 = Mat::zeros(image2.size(), CV_8UC3);
 	Draw1DHistogram(&im2Hist, 1, display_image2);
 	imshow("im2 histogram", display_image2);
@@ -441,40 +262,13 @@ static double templateMatching(Mat& im1, Mat& temp)
 	return maxVal;
 }
 
-void calcDICE(vector<vector<Point>> gt, vector<Rect> results) {
-	vector<Rect> gtRects;
-	double areaGT = 0.0;
-	for (int i = 0; i < gt.size(); i++) {
-		vector<Point> pts = gt.at(i);
-	//	Rect r = Rect(pts.at(0).x, pts.at(0).y, pts.at(1).x, pts.at(1).y, pts.at(2).x, pts.at(2).y, pts.at(3).x, pts.at(3).y);
-	//	areaGT = areaGT + r.area();
-	//	gtRects.push_back(r);
-	}
-	//This shows the ground truth image
-	applyBoundingRect(gtImage, gtRects, (0, 255, 0));
-	imshow("GT", gtImage);
-
-	double areaOverlap = 0.0;
-	double areaRes = 0.0;
-	for (int i = 0; i < results.size(); i++) {
-		double maxOverlap = 0.0;
-		Rect r1 = results.at(i);
-		areaRes = areaRes + r1.area();
-		for (int j = 0; j < gtRects.size(); j++) {
-			Rect r2 = gtRects.at(j);
-			double overlap = (r1 & r2).area();
-			maxOverlap = max(maxOverlap, overlap);
-		}
-		areaOverlap = areaOverlap + maxOverlap;
-	}
-	double diceRes = (2 * areaOverlap) / (areaGT + areaRes);
-	dice.push_back(diceRes);
-}
-static void displayGT(Mat& image, vector<vector<Point>> pts, int galleryNo)
+static void displayGT(Mat& image, vector<vector<Point>> pts, int galleryNo, vector<String> gtPaintings)
 {
 	for (int i = 0; i < pts.size(); i++) {
+		String text = gtPaintings.at(i);
 		vector<Point> t = pts.at(i);
 		polylines(image, t, false, Scalar(255, 0, 0));
+		putText(image, text, Point(pts.at(i).at(0).x + 10, pts.at(i).at(0).y + 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 235, 0), 2, false);
 	}
 	//Write Ground truth image to file 
 	String fileLocation = "GT/" + to_string(galleryNo)+ ".jpg";
@@ -504,9 +298,9 @@ static void calculateMetrics(int tp, int fp,int tn, int fn)
 	double accuracy = (double) (tp + tn) / (tp + fp + fn + tn);
 	double precision = (double) (tp) / (tp + fp);
 	double recall = (double) (tp) / (tp + fn);
-	double f1Score = (2 * (recall*precision)) / recall + precision;
+	double f1Score = (2 * (recall*precision)) / (recall + precision);
 	accuracySum += accuracy; precisionSum += precision; recallSum += recall; f1Sum += f1Score;
-	cout << "tp  fp  tn  fn  |  Precision   |  Recall  |  Accuracy  |  F1 Score\n";
+	cout << "TP  FP  TN  FN  |  Precision   |  Recall  |  Accuracy  |  F1 Score\n";
 	cout << tp <<"  "<< fp << "  " << tn << "  " << fn << "  |  " << precision << "  |  " << recall << "  |  " << accuracy << "  |  " << f1Score << "\n";
 }
 
@@ -559,10 +353,10 @@ int main(int argc, const char** argv)
 	groundTruths.push_back({ { Point(68, 329) , Point(350, 337), Point(351, 545) , Point(75,558) },{ Point(629, 346) , Point(877, 350), Point(873, 517) , Point(627,530) },{ Point(1057, 370) , Point(1187, 374), Point(1182, 487) , Point(1053,493) } });
 	groundTruths.push_back({ { Point(176,348) , Point(298,347), Point(307,481) , Point(184,475) },{ Point(469,343) , Point(690,338), Point(692,495) , Point(472,487) },{ Point(924, 349) , Point(1161,344), Point(1156, 495) , Point(924,488) } });
 
-	groundTruthStrings.push_back({ "Painting 2", "Painting1" });
-	groundTruthStrings.push_back({ "Painting 3", "Painting2", "Painting1" });
-	groundTruthStrings.push_back({ "Painting 4", "Painting5", "Painting6" });
-	groundTruthStrings.push_back({ "Painting 4", "Painting5", "Painting6" });
+	groundTruthStrings.push_back({ "Painting 2", "Painting 1" });
+	groundTruthStrings.push_back({ "Painting 3", "Painting 2", "Painting 1" });
+	groundTruthStrings.push_back({ "Painting 4", "Painting 5", "Painting 6" });
+	groundTruthStrings.push_back({ "Painting 4", "Painting 5", "Painting 6" });
 
 
 	groundTruthPaintings.push_back({ 2,1});
@@ -570,10 +364,10 @@ int main(int argc, const char** argv)
 	groundTruthPaintings.push_back({ 4,5,6 });
 	groundTruthPaintings.push_back({ 4,5,6 });
 	
-	double precisionSum = 0.0;
-	double recallSum = 0.0;
-	double accuracySum = 0.0;
-	double f1Sum = 0.0;
+	precisionSum = 0.0;
+	recallSum = 0.0;
+	accuracySum = 0.0;
+	f1Sum = 0.0;
 
 	for (int galleryNo = 0; galleryNo < NO_GALLERYS; galleryNo++) {
 		cout << "\nGallery No : " << galleryNo+1 << "\n";
@@ -583,7 +377,6 @@ int main(int argc, const char** argv)
 		vector<Rect> resRect;
 		vector<int> resPaintings;
 		vector<int> gtPaintings = groundTruthPaintings.at(galleryNo);
-		//cout << "CroppedNo " << "Template No  " << " | " << "CorrRes" << " tempmatchRes\n";
 
 		for (int galleySegNo = 0; galleySegNo < gallerySegments.size(); galleySegNo++) {
 			Rect r = gallerySegments.at(galleySegNo);
@@ -598,58 +391,44 @@ int main(int argc, const char** argv)
 				paintingRect.y += r.y;
 			}
 			Mat croppedIm =  imCopy(paintingRect);*/
+
 			Mat croppedIm1 = imCopy(r);
 			Rect paintingRect= zoom(imCopy(r),0.14);
 			Mat croppedIm = croppedIm1(paintingRect);
 			paintingRect.x += r.x;
 			paintingRect.y += r.y;
-			//Write cropped image to file 
-			String fileLocation = "Cropped/Zoom-" + to_string(galleryNo+1) + "-" + to_string(galleySegNo) + ".jpg";
-			imwrite(fileLocation, croppedIm);
-			imshow("croppedIm", croppedIm);
-			imshow("prezoom", imCopy(r));
-		//	waitKey();
-			//destroyAllWindows();
-			//imshow("Im", imCopy);
+
 			double tempMax = 0.0;
 			int maxIndex = 0;
 			double histRes = 0.0;
 			for (int templateNo = 0; templateNo < NO_PAINTINGS; templateNo++)
 			{
-				Mat template1;
+				Mat templateResized;
 				//Resize template painting to same as croppedIm
-				resize(templates[templateNo], template1, croppedIm.size());
-			//	imshow("template", template1);
-				//waitKey();
-				//destroyAllWindows();
+				resize(templates[templateNo], templateResized, croppedIm.size());
+
 				//Compare the hist of both
-				double corr = compareImages(croppedIm, template1);
+				double corr = compareImages(croppedIm, templateResized);
 
 				//Template Matching Res
-				double tempRes = templateMatching(croppedIm, template1);
+				double tempRes = templateMatching(croppedIm, templateResized);
 				if (tempRes > tempMax) {
 					tempMax = tempRes;
 					maxIndex = templateNo;
 					histRes = corr;
 				}
-				//print result
-				//cout << galleySegNo << " , " << templateNo + 1 << " | " << corr << " | " << tempRes << "\n";
-				//	waitKey();
-					//destroyAllWindows();
 			}
 			double threshold = (tempMax + histRes)/2;
 			if (threshold >= 0.4) {
-				cout << "Recognised Painting" << maxIndex + 1;// << "   The thres: " << threshold;
+				cout << "Recognised Painting" << maxIndex + 1 <<"\n";
 				resRect.push_back(paintingRect);
 				resPaintings.push_back(maxIndex + 1);
-			//	cout <<"\n" << paintingRect.x << " " << paintingRect.y << " - " << paintingRect.x + paintingRect.width << " " << paintingRect.y + paintingRect.height;
 			}
-			cout << "\n\n";
+
 		}
 		int tp = 0; int fp = 0; int tn = 0; int fn = 0;
 		applyBoundingRect(currentImage, resRect, Scalar(255, 0, 0));
 		for (int i = 0; i < resRect.size(); i++) {
-			String text = "Painting " + to_string(resPaintings.at(i));
 			int index = find(gtPaintings.begin(), gtPaintings.end(), resPaintings.at(i)) - gtPaintings.begin();
 			if (index >= 0 && index < gtPaintings.size()) {
 				if (isCorrectPrediction(groundTruths.at(galleryNo).at(index), resRect.at(i))){
@@ -659,18 +438,16 @@ int main(int argc, const char** argv)
 					fp++;
 				}
 			}
-			putText(currentImage, text, Point(resRect.at(i).x+5, resRect.at(i).y-20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 235,0),2, false);
+			String text = "Painting " + to_string(resPaintings.at(i));
+			putText(currentImage, text, Point(resRect.at(i).x+10, resRect.at(i).y+20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 235,0),2, false);
 		}
 		fn += gtPaintings.size() - tp -fp;
 		tn = 0; 
 		calculateMetrics(tp, fp, tn, fn);
-		displayGT(imCopy, groundTruths.at(galleryNo), galleryNo);
+		
+		//Display both result and ground truth
+		displayGT(imCopy, groundTruths.at(galleryNo), galleryNo, groundTruthStrings.at(galleryNo));
 		imshow("res", currentImage);
-		//Write resulting image to file 
-		String fileLocation = "Results/" + to_string(galleryNo) + ".jpg";
-		imwrite(fileLocation, currentImage);
-//		waitKey();
-	//	destroyAllWindows();
 	}
 	double avgPrecision = precisionSum / NO_GALLERYS;
 	double avgRecall = recallSum / NO_GALLERYS;
